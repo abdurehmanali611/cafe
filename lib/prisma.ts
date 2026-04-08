@@ -1,21 +1,20 @@
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/lib/generated/prisma";
 import { loadEnvConfig } from "@next/env";
 
-if (!process.env.DATABASE_URL) {
-  const projectDir = process.cwd();
-  loadEnvConfig(projectDir);
-}
-
-const databaseUrl = process.env.DATABASE_URL;
-
-if (!databaseUrl) {
-  throw new Error("DATABASE_URL is required to initialize Prisma.");
-}
-
-const connectionUrl = new URL(databaseUrl);
-
 const prismaClientSingleton = () => {
+  if (!process.env.DATABASE_URL) {
+    const projectDir = process.cwd();
+    loadEnvConfig(projectDir);
+  }
+
+  const databaseUrl = process.env.DATABASE_URL;
+
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is required to initialize Prisma.");
+  }
+
+  const connectionUrl = new URL(databaseUrl);
   const adapter = new PrismaMariaDb({
     host: connectionUrl.hostname,
     port: Number(connectionUrl.port || 3306),
@@ -33,8 +32,16 @@ declare const globalThis: {
   prismaGlobal?: ReturnType<typeof prismaClientSingleton>;
 } & typeof global;
 
-export const prisma = globalThis.prismaGlobal ?? prismaClientSingleton();
+const getPrismaClient = () => {
+  if (!globalThis.prismaGlobal) {
+    globalThis.prismaGlobal = prismaClientSingleton();
+  }
 
-if (process.env.NODE_ENV !== "production") {
-  globalThis.prismaGlobal = prisma;
-}
+  return globalThis.prismaGlobal;
+};
+
+export const prisma = new Proxy({} as ReturnType<typeof prismaClientSingleton>, {
+  get(_target, property, receiver) {
+    return Reflect.get(getPrismaClient(), property, receiver);
+  },
+});
